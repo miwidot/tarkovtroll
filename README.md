@@ -127,4 +127,4 @@ MIT License — see [LICENSE](LICENSE)
 
 ---
 
-*Inspired by [InstructBot](https://www.instructbot.co.uk/)*
+*A [Tarkov Stammtisch](https://tarkov-stammtisch.de/de/tools) project — inspired by [InstructBot](https://www.instructbot.co.uk/)*
