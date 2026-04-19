@@ -9,5 +9,12 @@
   "author": {
     "name": "Miwi",
     "email": "miwi@FreeBSD.org"
+  },
+  "info": {
+    "companyName": "miwidot",
+    "productName": "TarkovTroll",
+    "productVersion": "1.1.1",
+    "copyright": "(c) 2026 miwidot",
+    "comments": "Twitch Channel Points Integration for Escape from Tarkov"
   }
 }

@@ -1,5 +1,12 @@
 # TarkovTroll Changelog
 
+## Alpha 1.1.1
+
+### Neu
+- **360° Spin** — Neue Aktion die den Charakter automatisch um 360 Grad dreht (links/rechts wählbar). Pixel-Anzahl pro Drehung einstellbar je nach Maus-Sensitivity.
+- **Auto-Import Tarkov-Keybinds** — Beim Start werden deine Tarkov-Keybinds automatisch aus `control.ini` importiert. Keine manuelle Einrichtung mehr nötig.
+- **Code-signiert** — Die Exe ist jetzt mit einem Certum Open-Source-Developer-Zertifikat signiert. SmartScreen-Warnungen sollten seltener werden.
+
 ## Alpha 1.1
 
 ### Neu
