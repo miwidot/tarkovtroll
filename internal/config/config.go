@@ -83,6 +83,8 @@ var defaultActions = []Action{
 	{ID: "drop_backpack", Name: "Rucksack droppen", Description: "Droppt den Rucksack", Enabled: false, RewardTitle: "Rucksack weg!", RewardCost: 2000, Key: "z", HoldMs: 50, Steps: []ActionStep{{Key: "z", HoldMs: 50}, {Key: "z", HoldMs: 50, DelayMs: 150}}, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d"}, Duration: 1500}, Cooldown: 120000, Category: "combat", TarkovBind: "DropBackpack"},
 	{ID: "duck", Name: "Ducken", Description: "Geht in die Hocke", Enabled: false, RewardTitle: "Duck dich!", RewardCost: 100, Key: "c", HoldMs: 100, KeyLock: KeyLockConfig{Enabled: false}, Cooldown: 8000, Category: "movement", TarkovBind: "Duck"},
 	{ID: "headlight", Name: "Helmlampe", Description: "Schaltet die Helmlampe um", Enabled: false, RewardTitle: "Helmlampe!", RewardCost: 75, Key: "h", HoldMs: 100, KeyLock: KeyLockConfig{Enabled: false}, Cooldown: 10000, Category: "fun", TarkovBind: "ToggleHeadLight"},
+	{ID: "spin360", Name: "360 Spin", Description: "Dreht den Charakter um 360 Grad", Enabled: false, RewardTitle: "360 Spin!", RewardCost: 300, Key: "spin360", HoldMs: 8000, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d"}, Duration: 1500}, Cooldown: 15000, Category: "fun"},
+	{ID: "spin360_left", Name: "360 Spin (Links)", Description: "Dreht den Charakter um 360 Grad nach links", Enabled: false, RewardTitle: "360 Links!", RewardCost: 300, Key: "spin360left", HoldMs: 8000, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d"}, Duration: 1500}, Cooldown: 15000, Category: "fun"},
 }
 
 func configPath() (string, error) {

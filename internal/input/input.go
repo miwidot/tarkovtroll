@@ -29,6 +29,7 @@ const (
 	MOUSEEVENTF_MIDDLEUP   = 0x0040
 	MOUSEEVENTF_XDOWN      = 0x0080
 	MOUSEEVENTF_XUP        = 0x0100
+	MOUSEEVENTF_MOVE       = 0x0001
 	XBUTTON1               = 0x0001
 	XBUTTON2               = 0x0002
 )
@@ -187,6 +188,31 @@ func SendKeyUpVK(vk uint16) {
 
 func IsMouseButton(key string) bool {
 	return isMouseKey(key)
+}
+
+// SendMouseMove sends a relative mouse move event.
+func SendMouseMove(dx, dy int32) {
+	inp := INPUT_MOUSE{
+		Type: INPUT_MOUSE_VAL,
+		Mi: MOUSEINPUT{
+			Dx:    dx,
+			Dy:    dy,
+			Flags: MOUSEEVENTF_MOVE,
+		},
+	}
+	procSendInput.Call(1, uintptr(unsafe.Pointer(&inp)), unsafe.Sizeof(inp))
+}
+
+// Spin360 performs a 360-degree horizontal spin by moving the mouse in steps.
+func Spin360(totalPixels int, durationMs int, direction int) {
+	steps := 60
+	stepDelay := time.Duration(durationMs/steps) * time.Millisecond
+	pixelsPerStep := int32((totalPixels / steps) * direction)
+
+	for i := 0; i < steps; i++ {
+		SendMouseMove(pixelsPerStep, 0)
+		time.Sleep(stepDelay)
+	}
 }
 
 // HoldKeyDown presses a key/mouse down and returns a release function.

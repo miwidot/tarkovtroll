@@ -149,6 +149,30 @@ func (e *Executor) executeAction(action *config.Action) {
 		return
 	}
 
+	// Special actions
+	if strings.HasPrefix(strings.ToLower(action.Key), "spin360") {
+		if action.KeyLock.Enabled && len(action.KeyLock.Keys) > 0 {
+			e.keyLocker.LockKeys(action.KeyLock.Keys, action.KeyLock.Duration)
+			time.Sleep(50 * time.Millisecond)
+		}
+		direction := 1 // right
+		if strings.Contains(action.Key, "left") {
+			direction = -1
+		}
+		pixels := action.HoldMs // reuse hold_ms as pixel count for spin
+		if pixels <= 0 {
+			pixels = 8000 // default ~360 degrees
+		}
+		durationMs := 500
+		if action.Cooldown > 0 && action.Cooldown < 2000 {
+			durationMs = action.Cooldown
+		}
+		debuglog.Log("executeAction: %s spin360 pixels=%d dir=%d duration=%dms", action.ID, pixels, direction, durationMs)
+		input.Spin360(pixels, durationMs, direction)
+		debuglog.Log("executeAction: %s done (spin360)", action.ID)
+		return
+	}
+
 	// Single-key: lock first then press
 	if action.KeyLock.Enabled && len(action.KeyLock.Keys) > 0 {
 		debuglog.Log("executeAction: locking keys %v for %dms", action.KeyLock.Keys, action.KeyLock.Duration)

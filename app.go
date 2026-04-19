@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -50,8 +51,34 @@ func (a *App) startup(ctx context.Context) {
 		})
 	})
 
+	// Auto-import Tarkov keybinds if control.ini exists
+	go a.autoImportKeybinds()
+
 	if cfg.Twitch.AccessToken != "" {
 		go a.autoConnect()
+	}
+}
+
+func (a *App) autoImportKeybinds() {
+	path := a.cfg.TarkovPath
+	if path == "" {
+		path = tarkov.DefaultConfigPath()
+	}
+	if path == "" {
+		return
+	}
+	if _, err := os.Stat(path); err != nil {
+		debuglog.Log("autoImportKeybinds: control.ini nicht gefunden (%s)", path)
+		return
+	}
+	n, err := a.ImportTarkovKeybinds()
+	if err != nil {
+		debuglog.Log("autoImportKeybinds: error: %s", err)
+		return
+	}
+	if n > 0 {
+		debuglog.Log("autoImportKeybinds: %d Keybinds automatisch importiert", n)
+		runtime.EventsEmit(a.ctx, "twitch-log", fmt.Sprintf("%d Tarkov-Keybinds automatisch importiert", n))
 	}
 }
 
