@@ -53,17 +53,18 @@ type TwitchConfig struct {
 }
 
 type Config struct {
-	mu           sync.RWMutex
-	Twitch       TwitchConfig `json:"twitch"`
-	Actions      []Action     `json:"actions"`
-	TargetWindow string       `json:"target_window"`
-	GlobalEnable bool         `json:"global_enable"`
-	Language     string       `json:"language"`
-	TarkovPath   string       `json:"tarkov_path,omitempty"`
+	mu                sync.RWMutex
+	Twitch            TwitchConfig `json:"twitch"`
+	Actions           []Action     `json:"actions"`
+	TargetWindow      string       `json:"target_window"`
+	GlobalEnable      bool         `json:"global_enable"`
+	Language          string       `json:"language"`
+	TarkovPath        string       `json:"tarkov_path,omitempty"`
+	KeybindsImported  bool         `json:"keybinds_imported,omitempty"`
 }
 
 var defaultActions = []Action{
-	{ID: "grenade", Name: "Granate werfen", Description: "Stoppt, zieht Granate und wirft sie", Enabled: true, RewardTitle: "Granate werfen!", RewardCost: 500, Key: "g", HoldMs: 200, Steps: []ActionStep{{Key: "g", HoldMs: 200}, {DelayMs: 2500}, {Key: "mouse0", HoldMs: 500}}, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d", "space"}, Duration: 5000}, Cooldown: 30000, Category: "combat", TarkovBind: "PressThrowGrenade"},
+	{ID: "grenade", Name: "Granate werfen", Description: "Wechselt zur Granate und wirft sie (G x2)", Enabled: true, RewardTitle: "Granate werfen!", RewardCost: 500, Key: "g", HoldMs: 200, Steps: []ActionStep{{Key: "g", HoldMs: 200}, {DelayMs: 1500}, {Key: "g", HoldMs: 200}}, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d", "space"}, Duration: 4000}, Cooldown: 30000, Category: "combat", TarkovBind: "ThrowGrenade"},
 	{ID: "reload", Name: "Nachladen", Description: "Lädt die Waffe nach", Enabled: true, RewardTitle: "Nachladen!", RewardCost: 200, Key: "r", HoldMs: 100, KeyLock: KeyLockConfig{Enabled: false}, Cooldown: 15000, Category: "combat", TarkovBind: "ReloadWeapon"},
 	{ID: "inventory", Name: "Inventar öffnen", Description: "Öffnet das Inventar", Enabled: true, RewardTitle: "Inventar auf!", RewardCost: 300, Key: "tab", HoldMs: 100, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d"}, Duration: 3000}, Cooldown: 20000, Category: "movement", TarkovBind: "Inventory"},
 	{ID: "prone", Name: "Hinlegen", Description: "Geht in die Bauchlage", Enabled: true, RewardTitle: "Hinlegen!", RewardCost: 150, Key: "x", HoldMs: 100, KeyLock: KeyLockConfig{Enabled: false}, Cooldown: 10000, Category: "movement", TarkovBind: "Prone"},
@@ -154,32 +155,18 @@ func (c *Config) mergeNewActions() {
 	}
 
 	for _, da := range defaultActions {
-		idx, found := existing[da.ID]
+		_, found := existing[da.ID]
 		if !found {
 			// New action — add it
 			c.Actions = append(c.Actions, da)
 			continue
 		}
-		// Existing action — update fields that were added in newer versions
-		a := &c.Actions[idx]
-		// Always update steps from defaults (complex sequences should stay in sync)
-		if len(da.Steps) > 0 {
-			a.Steps = da.Steps
-		} else if len(da.Steps) == 0 && len(a.Steps) > 0 {
-			// Default removed steps — clear them
-			a.Steps = nil
-		}
+		// Existing action: do NOT overwrite user customizations.
+		// Only fill in TarkovBind if missing (used for auto-import on first launch).
+		a := &c.Actions[existing[da.ID]]
 		if a.TarkovBind == "" && da.TarkovBind != "" {
 			a.TarkovBind = da.TarkovBind
 		}
-		// Always sync key and hold_ms from defaults
-		a.Key = da.Key
-		a.HoldMs = da.HoldMs
-		// Always sync key lock from defaults
-		a.KeyLock = da.KeyLock
-		// Sync repeat settings
-		a.Repeat = da.Repeat
-		a.RepeatDelayMs = da.RepeatDelayMs
 	}
 }
 

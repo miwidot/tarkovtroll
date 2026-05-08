@@ -25,7 +25,7 @@
     {/each}
   </div>
   <div class="sidebar-footer">
-    <span class="version">v1.1.1</span>
+    <span class="version">v1.1.2</span>
   </div>
 </nav>
 

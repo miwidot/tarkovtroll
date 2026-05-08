@@ -60,6 +60,10 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) autoImportKeybinds() {
+	// Only run on first launch — respect user customizations after that
+	if a.cfg.KeybindsImported {
+		return
+	}
 	path := a.cfg.TarkovPath
 	if path == "" {
 		path = tarkov.DefaultConfigPath()
@@ -76,9 +80,11 @@ func (a *App) autoImportKeybinds() {
 		debuglog.Log("autoImportKeybinds: error: %s", err)
 		return
 	}
+	a.cfg.KeybindsImported = true
+	_ = a.cfg.Save()
 	if n > 0 {
-		debuglog.Log("autoImportKeybinds: %d Keybinds automatisch importiert", n)
-		runtime.EventsEmit(a.ctx, "twitch-log", fmt.Sprintf("%d Tarkov-Keybinds automatisch importiert", n))
+		debuglog.Log("autoImportKeybinds: %d Keybinds einmalig importiert", n)
+		runtime.EventsEmit(a.ctx, "twitch-log", fmt.Sprintf("%d Tarkov-Keybinds beim ersten Start importiert", n))
 	}
 }
 
@@ -608,16 +614,16 @@ func (a *App) ImportTarkovKeybinds() (int, error) {
 	actns := a.cfg.GetActions()
 	for _, action := range actns {
 		tarkovKeyName := action.TarkovBind
-		if tarkovKeyName == "" {
+		newKey := ""
+		if tarkovKeyName != "" {
+			newKey = ctrl.GetKeyForAction(tarkovKeyName)
+		}
+		// Fallback to ID-based mapping if TarkovBind missing or not found in control.ini
+		if newKey == "" {
 			if mapped, ok := tarkov.ActionToTarkovKey[action.ID]; ok {
-				tarkovKeyName = mapped
+				newKey = ctrl.GetKeyForAction(mapped)
 			}
 		}
-		if tarkovKeyName == "" {
-			continue
-		}
-
-		newKey := ctrl.GetKeyForAction(tarkovKeyName)
 		if newKey == "" {
 			continue
 		}

@@ -1,5 +1,16 @@
 # TarkovTroll Changelog
 
+## Alpha 1.1.2
+
+### Behoben
+- **Granate funktioniert jetzt** — Steps neu sortiert: G zum Switch, dann G nochmal zum Werfen (statt Mouse0 was im Granate-Modus zum Schießen führte). Default-TarkovBind auf `ThrowGrenade` korrigiert.
+- **Eigene Einstellungen werden nicht mehr überschrieben** — `mergeNewActions` hat bisher bei jedem Start Key/HoldMs/KeyLock/Repeat aus den Defaults überschrieben. User-Customizations bleiben jetzt erhalten.
+- **Auto-Import läuft nur einmalig** — Beim ersten Start werden Tarkov-Keybinds importiert, danach werden User-Edits respektiert. Manueller Re-Import via Settings weiterhin möglich.
+
+### Neu
+- **Aktions-Queue** — Mehrere Redemptions die gleichzeitig kommen werden seriell abgearbeitet (max. 8 in Queue). Verhindert KeyLock-Konflikte und chaotisches Verhalten bei vielen gleichzeitigen Einlösungen.
+- **Verbesserter Auto-Import-Fallback** — Wenn der Tarkov-Bind im control.ini nicht gefunden wird, gibt es jetzt einen Fallback auf das interne ID-Mapping.
+
 ## Alpha 1.1.1
 
 ### Neu

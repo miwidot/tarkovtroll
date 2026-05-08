@@ -25,6 +25,11 @@ var (
 	procQueryFullProcessImageName = kernel32.NewProc("QueryFullProcessImageNameW")
 )
 
+type queuedAction struct {
+	action   *config.Action
+	userName string
+}
+
 type Executor struct {
 	mu         sync.Mutex
 	cfg        *config.Config
@@ -32,13 +37,25 @@ type Executor struct {
 	cooldowns  map[string]time.Time
 	onAction   func(actionID, userName string)
 	onCooldown func(actionID string, remainingMs int)
+	queue      chan queuedAction
 }
 
 func NewExecutor(cfg *config.Config, kl *keylock.KeyLocker) *Executor {
-	return &Executor{
+	e := &Executor{
 		cfg:       cfg,
 		keyLocker: kl,
 		cooldowns: make(map[string]time.Time),
+		queue:     make(chan queuedAction, 8), // up to 8 queued actions
+	}
+	go e.runQueue()
+	return e
+}
+
+// runQueue serializes action execution — only one action runs at a time.
+// This prevents key lock conflicts and overlapping key sends.
+func (e *Executor) runQueue() {
+	for q := range e.queue {
+		e.executeAction(q.action)
 	}
 }
 
@@ -97,7 +114,14 @@ func (e *Executor) Execute(actionID string, userName string) error {
 		e.onAction(actionID, userName)
 	}
 
-	go e.executeAction(action)
+	// Queue the action — runQueue() will execute serially
+	select {
+	case e.queue <- queuedAction{action: action, userName: userName}:
+		debuglog.Log("Execute: %s queued (queue len=%d/%d)", actionID, len(e.queue), cap(e.queue))
+	default:
+		debuglog.Log("Execute: %s DROPPED — queue full", actionID)
+		return fmt.Errorf("queue full — try again in a moment")
+	}
 	return nil
 }
 
