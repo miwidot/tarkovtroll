@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -60,7 +61,8 @@ type Config struct {
 	GlobalEnable      bool         `json:"global_enable"`
 	Language          string       `json:"language"`
 	TarkovPath        string       `json:"tarkov_path,omitempty"`
-	KeybindsImported  bool         `json:"keybinds_imported,omitempty"`
+	KeybindsImported  bool         `json:"keybinds_imported"`
+	MigratedV112      bool         `json:"migrated_v112"`
 }
 
 var defaultActions = []Action{
@@ -124,10 +126,44 @@ func Load() (*Config, error) {
 	// Merge new default actions that don't exist yet in saved config
 	cfg.mergeNewActions()
 
+	// One-time migrations
+	if !cfg.MigratedV112 {
+		cfg.migrateV112()
+		cfg.MigratedV112 = true
+	}
+
 	// Save merged config so changes persist
 	_ = cfg.Save()
 
 	return &cfg, nil
+}
+
+// migrateV112 fixes known-broken default Steps from older versions.
+func (c *Config) migrateV112() {
+	for i := range c.Actions {
+		a := &c.Actions[i]
+		if a.Custom {
+			continue
+		}
+		// Grenade had broken Steps (G, wait, mouse0) which made the bot shoot
+		// instead of throwing. Replace with G, wait, G (switch + quick-throw).
+		if a.ID == "grenade" && len(a.Steps) > 0 {
+			hasMouse := false
+			for _, s := range a.Steps {
+				if strings.Contains(strings.ToLower(s.Key), "mouse") {
+					hasMouse = true
+					break
+				}
+			}
+			if hasMouse {
+				a.Steps = []ActionStep{
+					{Key: a.Key, HoldMs: 200},
+					{DelayMs: 1500},
+					{Key: a.Key, HoldMs: 200},
+				}
+			}
+		}
+	}
 }
 
 func DefaultConfig() *Config {

@@ -45,8 +45,9 @@ type Client struct {
 	onRedemption func(rewardID string, userName string, rewardTitle string)
 	onConnect    func()
 	onDisconnect func(err error)
-	onLog        func(msg string)
-	stopCh       chan struct{}
+	onLog            func(msg string)
+	onTokenRefresh   func()
+	stopCh           chan struct{}
 }
 
 type eventSubMessage struct {
@@ -99,6 +100,10 @@ func (c *Client) SetOnDisconnect(fn func(err error)) {
 
 func (c *Client) SetOnLog(fn func(msg string)) {
 	c.onLog = fn
+}
+
+func (c *Client) SetOnTokenRefresh(fn func()) {
+	c.onTokenRefresh = fn
 }
 
 func (c *Client) log(msg string) {
@@ -242,13 +247,11 @@ type ExistingReward struct {
 // GetExistingRewards fetches all custom rewards created by this app (only manageable ones).
 func (c *Client) GetExistingRewards() ([]ExistingReward, error) {
 	debuglog.Log("GetExistingRewards: broadcaster_id=%s", c.cfg.BroadcasterID)
-	req, _ := http.NewRequest("GET",
-		fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&only_manageable_rewards=true",
-			twitchAPIURL, c.cfg.BroadcasterID), nil)
-	req.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
-	req.Header.Set("Client-Id", ClientID)
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doAuthorized(func() (*http.Request, error) {
+		return http.NewRequest("GET",
+			fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&only_manageable_rewards=true",
+				twitchAPIURL, c.cfg.BroadcasterID), nil)
+	})
 	if err != nil {
 		debuglog.Log("GetExistingRewards: HTTP error: %s", err)
 		return nil, err
@@ -310,14 +313,16 @@ func (c *Client) CreateReward(title string, cost int, cooldownMs int, color stri
 	}
 	jsonBody, _ := json.Marshal(body)
 
-	req, _ := http.NewRequest("POST",
-		fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s", twitchAPIURL, c.cfg.BroadcasterID),
-		bytes.NewReader(jsonBody))
-	req.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
-	req.Header.Set("Client-Id", ClientID)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doAuthorized(func() (*http.Request, error) {
+		req, err := http.NewRequest("POST",
+			fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s", twitchAPIURL, c.cfg.BroadcasterID),
+			bytes.NewReader(jsonBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		return req, nil
+	})
 	if err != nil {
 		debuglog.Log("CreateReward: HTTP error: %s", err)
 		return "", err
@@ -348,13 +353,11 @@ func (c *Client) CreateReward(title string, cost int, cooldownMs int, color stri
 
 func (c *Client) DeleteReward(rewardID string) error {
 	debuglog.Log("DeleteReward: id=%s broadcaster_id=%s", rewardID, c.cfg.BroadcasterID)
-	req, _ := http.NewRequest("DELETE",
-		fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&id=%s",
-			twitchAPIURL, c.cfg.BroadcasterID, rewardID), nil)
-	req.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
-	req.Header.Set("Client-Id", ClientID)
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doAuthorized(func() (*http.Request, error) {
+		return http.NewRequest("DELETE",
+			fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&id=%s",
+				twitchAPIURL, c.cfg.BroadcasterID, rewardID), nil)
+	})
 	if err != nil {
 		debuglog.Log("DeleteReward: HTTP error: %s", err)
 		return err
@@ -378,15 +381,17 @@ func (c *Client) UpdateReward(rewardID string, fields map[string]interface{}, co
 	}
 	jsonBody, _ := json.Marshal(fields)
 
-	req, _ := http.NewRequest("PATCH",
-		fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&id=%s",
-			twitchAPIURL, c.cfg.BroadcasterID, rewardID),
-		bytes.NewReader(jsonBody))
-	req.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
-	req.Header.Set("Client-Id", ClientID)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doAuthorized(func() (*http.Request, error) {
+		req, err := http.NewRequest("PATCH",
+			fmt.Sprintf("%s/channel_points/custom_rewards?broadcaster_id=%s&id=%s",
+				twitchAPIURL, c.cfg.BroadcasterID, rewardID),
+			bytes.NewReader(jsonBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		return req, nil
+	})
 	if err != nil {
 		return err
 	}
@@ -542,6 +547,44 @@ func (c *Client) Disconnect() {
 	}
 }
 
+// doAuthorized executes a request with current Bearer token. If the response
+// is 401, it tries to refresh the access token once and re-runs the request.
+// The provided buildReq function must be able to build the request fresh on retry.
+func (c *Client) doAuthorized(buildReq func() (*http.Request, error)) (*http.Response, error) {
+	req, err := buildReq()
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
+	req.Header.Set("Client-Id", ClientID)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 401 {
+		return resp, nil
+	}
+
+	// 401 — try to refresh and retry once
+	resp.Body.Close()
+	if c.cfg.RefreshToken == "" {
+		return nil, fmt.Errorf("token expired, no refresh token available")
+	}
+	if err := c.RefreshAccessToken(); err != nil {
+		return nil, fmt.Errorf("token refresh failed: %w", err)
+	}
+	c.log("Access token expired, refreshed automatically")
+
+	req2, err := buildReq()
+	if err != nil {
+		return nil, err
+	}
+	req2.Header.Set("Authorization", "Bearer "+c.cfg.AccessToken)
+	req2.Header.Set("Client-Id", ClientID)
+	return c.httpClient.Do(req2)
+}
+
 func (c *Client) RefreshAccessToken() error {
 	data := url.Values{
 		"client_id":     {ClientID},
@@ -566,5 +609,8 @@ func (c *Client) RefreshAccessToken() error {
 
 	c.cfg.AccessToken = result.AccessToken
 	c.cfg.RefreshToken = result.RefreshToken
+	if c.onTokenRefresh != nil {
+		c.onTokenRefresh()
+	}
 	return nil
 }

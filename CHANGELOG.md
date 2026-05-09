@@ -1,5 +1,16 @@
 # TarkovTroll Changelog
 
+## Alpha 1.1.3
+
+### Behoben
+- **App lockt nicht mehr ab** — Hook-Lifecycle wurde von Channel-basiert (limitierter Buffer) auf atomic Ref-Counter umgestellt. Bei vielen gleichzeitigen Redemptions hat sich vorher die App komplett aufgehängt, weil der `installHookCh` Buffer überlief und `LockKeys` für immer blockierte.
+- **Granate funktioniert jetzt wirklich** — Zwei Bugs gefixt:
+  1. One-Time-Migration für alle bestehenden User: alte broken Steps mit `mouse0` (was zum Schießen führte) werden automatisch durch `Key, wait, Key` ersetzt.
+  2. `ImportTarkovKeybinds` hat bisher bei jedem Aufruf Step 0 der Granaten-Action mit dem "Stop-Key" (s = rückwärts) überschrieben. Diese Logik wurde komplett entfernt.
+- **Twitch Token Auto-Refresh** — Wenn ein API-Call mit 401 Unauthorized fehlschlägt (Token abgelaufen), wird das Token jetzt automatisch refresht und der Call neu versucht. Vorher mussten User sich neu authentifizieren.
+- **Keybinds bleiben nach Neustart** — `KeybindsImported`-Flag wird jetzt zuverlässig persistiert (omitempty entfernt). Dadurch läuft der Auto-Import nicht mehr bei jedem Start.
+- **OS-Thread-Pinning für Windows-Hook** — `messagePump` ist jetzt mit `runtime.LockOSThread()` an einen OS-Thread gepinnt, wie es Windows für Hooks erfordert.
+
 ## Alpha 1.1.2
 
 ### Behoben

@@ -440,6 +440,11 @@ func (a *App) setupTwitchCallbacks() {
 	a.twClient.SetOnLog(func(msg string) {
 		runtime.EventsEmit(a.ctx, "twitch-log", msg)
 	})
+
+	a.twClient.SetOnTokenRefresh(func() {
+		_ = a.cfg.Save()
+		debuglog.Log("Twitch: access token auto-refreshed and saved")
+	})
 }
 
 // --- Reward Management ---
@@ -600,17 +605,6 @@ func (a *App) ImportTarkovKeybinds() (int, error) {
 	movementKeys := ctrl.GetMovementKeys()
 	updated := 0
 
-	// Also get the stop key (S by default)
-	stopKey := ctrl.GetKeyForAction("Duck") // fallback
-	for _, ab := range ctrl.AxisBindings {
-		if ab.AxisName == "MoveY" && len(ab.Pairs) > 0 {
-			neg := ab.Pairs[0].Negative.KeyCode
-			if len(neg) > 0 {
-				stopKey = tarkov.ConvertKeyCodes(neg)
-			}
-		}
-	}
-
 	actns := a.cfg.GetActions()
 	for _, action := range actns {
 		tarkovKeyName := action.TarkovBind
@@ -642,14 +636,6 @@ func (a *App) ImportTarkovKeybinds() (int, error) {
 				if step.Release == oldKey {
 					action.Steps[i].Release = newKey
 				}
-			}
-		}
-
-		// Update grenade stop-key in Steps
-		if action.ID == "grenade" && len(action.Steps) > 0 && stopKey != "" {
-			if action.Steps[0].Key != stopKey && !action.Steps[0].HoldDown {
-				action.Steps[0].Key = stopKey
-				changed = true
 			}
 		}
 

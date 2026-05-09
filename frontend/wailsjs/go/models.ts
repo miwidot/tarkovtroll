@@ -132,7 +132,8 @@ export namespace config {
 	    global_enable: boolean;
 	    language: string;
 	    tarkov_path?: string;
-	    keybinds_imported?: boolean;
+	    keybinds_imported: boolean;
+	    migrated_v112: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -147,6 +148,7 @@ export namespace config {
 	        this.language = source["language"];
 	        this.tarkov_path = source["tarkov_path"];
 	        this.keybinds_imported = source["keybinds_imported"];
+	        this.migrated_v112 = source["migrated_v112"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

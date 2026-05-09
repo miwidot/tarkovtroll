@@ -1,8 +1,10 @@
 package keylock
 
 import (
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -69,19 +71,16 @@ type KeyLocker struct {
 	onKeyBlocked    func(key string)
 	targetWindow    string
 	targetActive    bool // cached: is target window in foreground?
-	installHookCh   chan bool // true=install, false=uninstall
-	hookReadyCh     chan struct{} // signaled when hook is installed
+	lockCount       int32 // atomic: how many active locks
 }
 
 var instance *KeyLocker
 
 func New(targetWindow string) *KeyLocker {
 	kl := &KeyLocker{
-		lockedKeys:    make(map[uint16]bool),
-		stopCh:        make(chan struct{}),
-		targetWindow:  targetWindow,
-		installHookCh: make(chan bool, 4),
-		hookReadyCh:   make(chan struct{}, 1),
+		lockedKeys:   make(map[uint16]bool),
+		stopCh:       make(chan struct{}),
+		targetWindow: targetWindow,
 	}
 	instance = kl
 	return kl
@@ -130,22 +129,18 @@ func (kl *KeyLocker) LockKeys(keys []string, durationMs int) {
 	}
 	kl.mu.Unlock()
 
-	// Drain hookReadyCh before requesting install
-	select {
-	case <-kl.hookReadyCh:
-	default:
-	}
+	// Increment lock counter — message pump will install hook when count > 0
+	atomic.AddInt32(&kl.lockCount, 1)
 
-	// Tell message pump to install the hook NOW
-	kl.installHookCh <- true
-
-	// Wait for hook to actually be installed before sending key-ups
-	// Otherwise physical key-down events override our key-ups immediately
-	select {
-	case <-kl.hookReadyCh:
-		debuglog.Log("KeyLock: hook confirmed installed, now sending key-ups")
-	case <-time.After(500 * time.Millisecond):
-		debuglog.Log("KeyLock: WARNING hook install timeout, sending key-ups anyway")
+	// Wait briefly for hook to actually be installed (non-blocking poll)
+	for i := 0; i < 100; i++ {
+		kl.mu.RLock()
+		installed := kl.hookInstalled
+		kl.mu.RUnlock()
+		if installed {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	// Send key-up events multiple times to force-release in-game
@@ -157,7 +152,7 @@ func (kl *KeyLocker) LockKeys(keys []string, durationMs int) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
-	debuglog.Log("KeyLock: sent 3x key-up for %d keys to release in-game", len(lockedVKs))
+	debuglog.Log("KeyLock: sent 3x key-up for %d keys (count=%d)", len(lockedVKs), atomic.LoadInt32(&kl.lockCount))
 
 	go func() {
 		time.Sleep(time.Duration(durationMs) * time.Millisecond)
@@ -169,10 +164,9 @@ func (kl *KeyLocker) LockKeys(keys []string, durationMs int) {
 			}
 		}
 		kl.mu.Unlock()
-		debuglog.Log("KeyLock: keys unlocked after %dms", durationMs)
-
-		// Tell message pump to remove the hook
-		kl.installHookCh <- false
+		// Decrement counter — pump will uninstall hook when count reaches 0
+		atomic.AddInt32(&kl.lockCount, -1)
+		debuglog.Log("KeyLock: keys unlocked after %dms (count=%d)", durationMs, atomic.LoadInt32(&kl.lockCount))
 	}()
 }
 
@@ -284,15 +278,11 @@ func (kl *KeyLocker) installHook() {
 		debuglog.Log("KeyLock: FEHLER SetWindowsHookEx: %s", err.Error())
 		return
 	}
+	kl.mu.Lock()
 	kl.hookHandle = hook
 	kl.hookInstalled = true
+	kl.mu.Unlock()
 	debuglog.Log("KeyLock: Hook installiert")
-
-	// Signal that hook is ready
-	select {
-	case kl.hookReadyCh <- struct{}{}:
-	default:
-	}
 }
 
 func (kl *KeyLocker) removeHook() {
@@ -301,13 +291,19 @@ func (kl *KeyLocker) removeHook() {
 	}
 	if kl.hookHandle != 0 {
 		procUnhookWindowsHookEx.Call(kl.hookHandle)
-		kl.hookHandle = 0
 	}
+	kl.mu.Lock()
+	kl.hookHandle = 0
 	kl.hookInstalled = false
+	kl.mu.Unlock()
 	debuglog.Log("KeyLock: Hook entfernt")
 }
 
 func (kl *KeyLocker) messagePump() {
+	// Pin to OS thread — Windows hooks are tied to the thread that installs them
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	var msg MSG
 	lastWindowCheck := time.Now()
 
@@ -320,16 +316,16 @@ func (kl *KeyLocker) messagePump() {
 			break
 		}
 
-		// Check for hook install/uninstall requests (non-blocking)
-		select {
-		case install := <-kl.installHookCh:
-			if install {
-				kl.installHook()
-				kl.updateTargetWindowCache()
-			} else {
-				kl.removeHook()
-			}
-		default:
+		// Ref-counted hook lifecycle: install when count > 0, remove when count == 0
+		count := atomic.LoadInt32(&kl.lockCount)
+		kl.mu.RLock()
+		installed := kl.hookInstalled
+		kl.mu.RUnlock()
+		if count > 0 && !installed {
+			kl.installHook()
+			kl.updateTargetWindowCache()
+		} else if count == 0 && installed {
+			kl.removeHook()
 		}
 
 		// Update target window cache every 500ms (only when hook is active)
