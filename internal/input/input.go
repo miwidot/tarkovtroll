@@ -16,10 +16,11 @@ var (
 )
 
 const (
-	INPUT_KEYBOARD     = 1
-	INPUT_MOUSE_VAL    = 0
-	KEYEVENTF_KEYUP    = 0x0002
-	KEYEVENTF_SCANCODE = 0x0008
+	INPUT_KEYBOARD        = 1
+	INPUT_MOUSE_VAL       = 0
+	KEYEVENTF_EXTENDEDKEY = 0x0001
+	KEYEVENTF_KEYUP       = 0x0002
+	KEYEVENTF_SCANCODE    = 0x0008
 
 	MOUSEEVENTF_LEFTDOWN   = 0x0002
 	MOUSEEVENTF_LEFTUP     = 0x0004
@@ -115,7 +116,11 @@ func sendMouseDown(btn mouseButton) {
 		},
 	}
 	ret, _, err := procSendInput.Call(1, uintptr(unsafe.Pointer(&inp)), unsafe.Sizeof(inp))
-	debuglog.Log("sendMouseDown: flags=0x%X ret=%d size=%d err=%v", btn.downFlag, ret, unsafe.Sizeof(inp), err)
+	if ret != 1 {
+		debuglog.Log("sendMouseDown: BLOCKED flags=0x%X ret=%d err=%v", btn.downFlag, ret, err)
+	} else {
+		debuglog.Log("sendMouseDown: flags=0x%X ok", btn.downFlag)
+	}
 }
 
 func sendMouseUp(btn mouseButton) {
@@ -127,7 +132,11 @@ func sendMouseUp(btn mouseButton) {
 		},
 	}
 	ret, _, err := procSendInput.Call(1, uintptr(unsafe.Pointer(&inp)), unsafe.Sizeof(inp))
-	debuglog.Log("sendMouseUp: flags=0x%X ret=%d size=%d err=%v", btn.upFlag, ret, unsafe.Sizeof(inp), err)
+	if ret != 1 {
+		debuglog.Log("sendMouseUp: BLOCKED flags=0x%X ret=%d err=%v", btn.upFlag, ret, err)
+	} else {
+		debuglog.Log("sendMouseUp: flags=0x%X ok", btn.upFlag)
+	}
 }
 
 // INPUT_MOUSE_TYPE_VAL is the SendInput type value for mouse events
@@ -137,31 +146,64 @@ func vkToScanCode(vk uint16) uint16 {
 	return uint16(ret)
 }
 
-func sendKeyDown(vk uint16) {
-	scan := vkToScanCode(vk)
-	input := INPUT_KB{
-		Type: INPUT_KEYBOARD,
-		Ki: KEYBDINPUT{
-			Vk:    vk,
-			Scan:  scan,
-			Flags: KEYEVENTF_SCANCODE,
-		},
-	}
-	procSendInput.Call(1, uintptr(unsafe.Pointer(&input)), unsafe.Sizeof(input))
+// extendedKeys are VKs that require the KEYEVENTF_EXTENDEDKEY flag (E0 prefix).
+// Without it, DirectInput games receive the wrong scancode.
+var extendedKeys = map[uint16]bool{
+	0xA3: true, // Right Ctrl
+	0xA5: true, // Right Alt
+	0x2D: true, // Insert
+	0x2E: true, // Delete
+	0x24: true, // Home
+	0x23: true, // End
+	0x21: true, // PageUp
+	0x22: true, // PageDown
+	0x25: true, // Left arrow
+	0x26: true, // Up arrow
+	0x27: true, // Right arrow
+	0x28: true, // Down arrow
+	0x90: true, // NumLock
+	0x2C: true, // PrintScreen
 }
 
-func sendKeyUp(vk uint16) {
+// sendKey sends a single keyboard scancode event.
+// CRITICAL for DirectInput games like Tarkov:
+//   - Vk MUST be 0 when using KEYEVENTF_SCANCODE (mixing them makes the game
+//     think the key is stuck/held down).
+//   - Extended keys need the KEYEVENTF_EXTENDEDKEY flag or the wrong key arrives.
+func sendKey(vk uint16, keyUp bool) {
 	scan := vkToScanCode(vk)
+	flags := uint32(KEYEVENTF_SCANCODE)
+	ext := extendedKeys[vk]
+	if ext {
+		flags |= KEYEVENTF_EXTENDEDKEY
+	}
+	if keyUp {
+		flags |= KEYEVENTF_KEYUP
+	}
 	input := INPUT_KB{
 		Type: INPUT_KEYBOARD,
 		Ki: KEYBDINPUT{
-			Vk:    vk,
+			Vk:    0, // must be 0 for pure scancode input (DirectInput requirement)
 			Scan:  scan,
-			Flags: KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP,
+			Flags: flags,
 		},
 	}
-	procSendInput.Call(1, uintptr(unsafe.Pointer(&input)), unsafe.Sizeof(input))
+	ret, _, err := procSendInput.Call(1, uintptr(unsafe.Pointer(&input)), unsafe.Sizeof(input))
+	// ret = number of events successfully inserted. 0 means the input was
+	// blocked (e.g. by UIPI/anti-cheat) — this is the key diagnostic signal.
+	dir := "down"
+	if keyUp {
+		dir = "up"
+	}
+	if ret != 1 {
+		debuglog.Log("sendKey: BLOCKED vk=0x%X scan=0x%X ext=%v %s ret=%d err=%v", vk, scan, ext, dir, ret, err)
+	} else {
+		debuglog.Log("sendKey: vk=0x%X scan=0x%X ext=%v %s ok", vk, scan, ext, dir)
+	}
 }
+
+func sendKeyDown(vk uint16) { sendKey(vk, false) }
+func sendKeyUp(vk uint16)   { sendKey(vk, true) }
 
 func ResolveKey(key string) (uint16, bool) {
 	vk, ok := keyMap[strings.ToLower(strings.TrimSpace(key))]
@@ -233,6 +275,7 @@ func HoldKeyDown(keySpec string) func() {
 // keySpec can be "g", "alt+t" for key combos, or "mouse0" for mouse buttons.
 func PressKey(keySpec string, holdMs int) {
 	parts := strings.Split(strings.ToLower(keySpec), "+")
+	debuglog.Log("PressKey: spec=%q holdMs=%d parsed=%v", keySpec, holdMs, parts)
 
 	// Press modifiers first
 	var modifiers []uint16
@@ -241,6 +284,8 @@ func PressKey(keySpec string, holdMs int) {
 			modifiers = append(modifiers, vk)
 			sendKeyDown(vk)
 			time.Sleep(10 * time.Millisecond)
+		} else {
+			debuglog.Log("PressKey: UNKNOWN modifier %q in spec %q", p, keySpec)
 		}
 	}
 
@@ -254,6 +299,8 @@ func PressKey(keySpec string, holdMs int) {
 		sendKeyDown(vk)
 		time.Sleep(time.Duration(holdMs) * time.Millisecond)
 		sendKeyUp(vk)
+	} else {
+		debuglog.Log("PressKey: UNKNOWN main key %q in spec %q — nichts gesendet!", mainKey, keySpec)
 	}
 
 	// Release modifiers in reverse

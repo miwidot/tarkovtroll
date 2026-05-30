@@ -3,7 +3,13 @@
 ## Alpha 1.1.4
 
 ### Behoben
+- **Input-Mechanismus grundlegend korrigiert** — Bisher wurde bei jedem Tastendruck Virtual-Key UND Scancode gleichzeitig ins selbe Event gepackt. Bei DirectInput-Spielen wie Tarkov führt das zum "Taste-hängt"-Verhalten — die wahrscheinliche Ursache für "Schießen geht nicht", "Mag-Wechsel klappt nicht immer" und Probleme beim Rennen. Jetzt: reiner Scancode (Vk=0), wie es DirectInput verlangt.
+- **Extended-Key-Flag** — Tasten wie rechtes Alt und Pfeiltasten brauchen das E0-Extended-Flag, sonst kommt der falsche Scancode im Spiel an. Wird jetzt korrekt gesetzt.
 - **Rewards flackern nicht mehr beim schnellen Master-Toggle** — Wenn man den Haupt-Schalter schnell AN→AUS umlegte, liefen `SyncRewards` (erstellen) und `DeleteAllRewards` (löschen) gleichzeitig. Resultat: Rewards wurden auf Twitch erstellt und 0,5s später wieder gelöscht. Beide Operationen sind jetzt durch einen Mutex serialisiert.
+
+### Diagnose
+- **Ausführliches Input-Logging** — Jeder gesendete Tastendruck/Klick wird mit Scancode geloggt, inklusive ob Windows ihn akzeptiert hat (`ok`) oder blockiert (`BLOCKED`). Damit lässt sich endlich zweifelsfrei feststellen, ob Input-Probleme an der App, am Spiel oder am Anti-Cheat liegen.
+- **Keybind-Import-Logging** — Beim Import wird der rohe Wert aus `control.ini` und das Ergebnis der Konvertierung mitgeschrieben.
 
 ## Alpha 1.1.3
 

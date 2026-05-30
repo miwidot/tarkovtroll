@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"bitbotgo/internal/debuglog"
 )
 
 type ControlINI struct {
@@ -189,10 +191,15 @@ func (c *ControlINI) GetKeyForAction(tarkovKeyName string) string {
 	for _, kb := range c.KeyBindings {
 		if kb.KeyName == tarkovKeyName {
 			if len(kb.Variants) > 0 && len(kb.Variants[0].KeyCode) > 0 {
-				return ConvertKeyCodes(kb.Variants[0].KeyCode)
+				raw := kb.Variants[0].KeyCode
+				converted := ConvertKeyCodes(raw)
+				debuglog.Log("Keybind: %s raw=%v → %q", tarkovKeyName, raw, converted)
+				return converted
 			}
+			debuglog.Log("Keybind: %s gefunden aber keine KeyCodes", tarkovKeyName)
 		}
 	}
+	debuglog.Log("Keybind: %s NICHT in control.ini gefunden", tarkovKeyName)
 	return ""
 }
 
