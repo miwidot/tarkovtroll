@@ -125,21 +125,55 @@ func (e *Executor) Execute(actionID string, userName string) error {
 	return nil
 }
 
+// applyPreActionLock releases and blocks the keys that would otherwise prevent
+// the action from registering in-game, then waits for the game to settle.
+//
+// For combat actions this ALWAYS includes the sprint modifiers (Shift/Ctrl) and
+// movement keys: in Tarkov a held Shift (sprint) lowers the weapon, and while
+// lowered the game ignores reload / grenade / mag-swap. Releasing+blocking those
+// and waiting ~350ms lets the weapon rise before we send the actual key.
+func (e *Executor) applyPreActionLock(action *config.Action) {
+	isCombat := action.Category == "combat"
+
+	var keys []string
+	duration := action.KeyLock.Duration
+
+	if isCombat {
+		// Always clear sprint + movement for weapon actions, regardless of
+		// the per-action config (which historically missed Shift).
+		keys = []string{"shift", "ctrl", "w", "a", "s", "d", "space"}
+		if duration < 1500 {
+			duration = 1500
+		}
+	} else if action.KeyLock.Enabled && len(action.KeyLock.Keys) > 0 {
+		keys = action.KeyLock.Keys
+	}
+
+	if len(keys) == 0 {
+		return
+	}
+
+	debuglog.Log("executeAction: pre-action lock %v for %dms (combat=%v)", keys, duration, isCombat)
+	e.keyLocker.LockKeys(keys, duration)
+
+	settle := 200
+	if isCombat {
+		settle = 350 // weapon needs time to rise after sprint release
+	}
+	time.Sleep(time.Duration(settle) * time.Millisecond)
+}
+
 func (e *Executor) executeAction(action *config.Action) {
-	debuglog.Log("executeAction: %s key=%q steps=%d keylock=%v",
-		action.ID, action.Key, len(action.Steps), action.KeyLock.Enabled)
+	debuglog.Log("executeAction: %s key=%q steps=%d keylock=%v cat=%s",
+		action.ID, action.Key, len(action.Steps), action.KeyLock.Enabled, action.Category)
 
 	// Multi-step action
 	if len(action.Steps) > 0 {
 		heldKeys := make(map[string]func())
 
-		// Apply key lock BEFORE steps — this also sends key-up for locked keys
-		// so held movement keys (W/A/S/D) get released in-game
-		if action.KeyLock.Enabled && len(action.KeyLock.Keys) > 0 {
-			debuglog.Log("executeAction: locking keys %v for %dms (before steps)", action.KeyLock.Keys, action.KeyLock.Duration)
-			e.keyLocker.LockKeys(action.KeyLock.Keys, action.KeyLock.Duration)
-			time.Sleep(200 * time.Millisecond) // wait for game to register key releases
-		}
+		// Release/block sprint + movement before steps (and settle) so the
+		// weapon is up before e.g. the grenade sequence runs.
+		e.applyPreActionLock(action)
 
 		for i, step := range action.Steps {
 			debuglog.Log("executeAction: step %d key=%q holdMs=%d delayMs=%d holdDown=%v release=%q",
@@ -197,12 +231,9 @@ func (e *Executor) executeAction(action *config.Action) {
 		return
 	}
 
-	// Single-key: lock first then press
-	if action.KeyLock.Enabled && len(action.KeyLock.Keys) > 0 {
-		debuglog.Log("executeAction: locking keys %v for %dms", action.KeyLock.Keys, action.KeyLock.Duration)
-		e.keyLocker.LockKeys(action.KeyLock.Keys, action.KeyLock.Duration)
-		time.Sleep(50 * time.Millisecond)
-	}
+	// Release/block sprint + movement (and settle) so weapon actions like
+	// reload / mag-swap register even while the streamer is sprinting.
+	e.applyPreActionLock(action)
 
 	// Repeat support
 	repeatCount := action.Repeat

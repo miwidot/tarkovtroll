@@ -1,5 +1,12 @@
 # TarkovTroll Changelog
 
+## Alpha 1.1.5
+
+### Behoben
+- **Waffen-Aktionen funktionieren jetzt auch beim Rennen** — Test-Logs haben das Muster eindeutig gezeigt: Schießen und Körperhaltungen (hinlegen/springen) gingen, aber Reload, Granate und Mag-Wechsel nicht — vor allem beim Sprinten. Ursache: In Tarkov senkt gehaltenes Shift (Sprint) die Waffe, und bei gesenkter Waffe ignoriert das Spiel alle Waffen-Aktionen. TarkovTroll hat Shift bisher nie losgelassen.
+  - Vor jeder Combat-Aktion werden jetzt **Shift + Strg + WASD + Space** garantiert losgelassen und kurz blockiert, plus 350ms Wartezeit, damit die Waffe hochkommt — *dann* erst Reload/Granate/Mag.
+  - Betrifft auch `reload`, `check_mag` und `fire_mode`, die vorher gar keinen Tasten-Lock hatten.
+
 ## Alpha 1.1.4
 
 ### Behoben
