@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -22,6 +23,7 @@ type App struct {
 	twClient  *twitch.Client
 	executor  *actions.Executor
 	keyLocker *keylock.KeyLocker
+	rewardMu  sync.Mutex // serializes SyncRewards / DeleteAllRewards
 }
 
 func NewApp() *App {
@@ -450,6 +452,9 @@ func (a *App) setupTwitchCallbacks() {
 // --- Reward Management ---
 
 func (a *App) SyncRewards() error {
+	a.rewardMu.Lock()
+	defer a.rewardMu.Unlock()
+
 	if a.twClient == nil || !a.twClient.IsConnected() {
 		debuglog.Log("SyncRewards: nicht verbunden")
 		return fmt.Errorf("not connected to Twitch")
@@ -542,6 +547,9 @@ func (a *App) SyncRewards() error {
 }
 
 func (a *App) DeleteAllRewards() error {
+	a.rewardMu.Lock()
+	defer a.rewardMu.Unlock()
+
 	if a.twClient == nil {
 		return fmt.Errorf("not connected to Twitch")
 	}

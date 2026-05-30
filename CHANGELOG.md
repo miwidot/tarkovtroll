@@ -1,5 +1,10 @@
 # TarkovTroll Changelog
 
+## Alpha 1.1.4
+
+### Behoben
+- **Rewards flackern nicht mehr beim schnellen Master-Toggle** — Wenn man den Haupt-Schalter schnell AN→AUS umlegte, liefen `SyncRewards` (erstellen) und `DeleteAllRewards` (löschen) gleichzeitig. Resultat: Rewards wurden auf Twitch erstellt und 0,5s später wieder gelöscht. Beide Operationen sind jetzt durch einen Mutex serialisiert.
+
 ## Alpha 1.1.3
 
 ### Behoben
