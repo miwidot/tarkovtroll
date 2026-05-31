@@ -107,7 +107,7 @@
     <p class="hint">{$i18n('settings.about.desc')}</p>
     <div class="about-footer">
       <span class="about-brand">TARKOVTROLL</span>
-      <span class="about-version">v1.1.5 Alpha</span>
+      <span class="about-version">v1.1.6 Alpha</span>
     </div>
   </div>
 </div>

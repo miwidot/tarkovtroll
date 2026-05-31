@@ -1,5 +1,10 @@
 # TarkovTroll Changelog
 
+## Alpha 1.1.6
+
+### Behoben
+- **Granate wird jetzt geworfen, nicht nur gezogen** — Mit dem Sprint-Fix aus 1.1.5 zieht `G` die Granate korrekt, aber die alte Sequenz (`G → warten → G`) hat sie nur gezogen und nie geworfen. In Tarkov wirft man mit der **Schießtaste**: Die Sequenz ist jetzt `G (ziehen) → warten → Maustaste (werfen)`. Einmalige Migration stellt das bei bestehenden Configs automatisch um.
+
 ## Alpha 1.1.5
 
 ### Behoben

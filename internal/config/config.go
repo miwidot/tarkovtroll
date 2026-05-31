@@ -63,10 +63,11 @@ type Config struct {
 	TarkovPath        string       `json:"tarkov_path,omitempty"`
 	KeybindsImported  bool         `json:"keybinds_imported"`
 	MigratedV112      bool         `json:"migrated_v112"`
+	MigratedV115      bool         `json:"migrated_v115"`
 }
 
 var defaultActions = []Action{
-	{ID: "grenade", Name: "Granate werfen", Description: "Wechselt zur Granate und wirft sie (G x2)", Enabled: true, RewardTitle: "Granate werfen!", RewardCost: 500, Key: "g", HoldMs: 200, Steps: []ActionStep{{Key: "g", HoldMs: 200}, {DelayMs: 1500}, {Key: "g", HoldMs: 200}}, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d", "space"}, Duration: 4000}, Cooldown: 30000, Category: "combat", TarkovBind: "ThrowGrenade"},
+	{ID: "grenade", Name: "Granate werfen", Description: "Zieht die Granate (G) und wirft sie (Schießtaste)", Enabled: true, RewardTitle: "Granate werfen!", RewardCost: 500, Key: "g", HoldMs: 200, Steps: []ActionStep{{Key: "g", HoldMs: 200}, {DelayMs: 1500}, {Key: "mouse0", HoldMs: 200}}, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d", "space"}, Duration: 4000}, Cooldown: 30000, Category: "combat", TarkovBind: "ThrowGrenade"},
 	{ID: "reload", Name: "Nachladen", Description: "Lädt die Waffe nach", Enabled: true, RewardTitle: "Nachladen!", RewardCost: 200, Key: "r", HoldMs: 100, KeyLock: KeyLockConfig{Enabled: false}, Cooldown: 15000, Category: "combat", TarkovBind: "ReloadWeapon"},
 	{ID: "inventory", Name: "Inventar öffnen", Description: "Öffnet das Inventar", Enabled: true, RewardTitle: "Inventar auf!", RewardCost: 300, Key: "tab", HoldMs: 100, KeyLock: KeyLockConfig{Enabled: true, Keys: []string{"w", "a", "s", "d"}, Duration: 3000}, Cooldown: 20000, Category: "movement", TarkovBind: "Inventory"},
 	{ID: "prone", Name: "Hinlegen", Description: "Geht in die Bauchlage", Enabled: true, RewardTitle: "Hinlegen!", RewardCost: 150, Key: "x", HoldMs: 100, KeyLock: KeyLockConfig{Enabled: false}, Cooldown: 10000, Category: "movement", TarkovBind: "Prone"},
@@ -131,6 +132,10 @@ func Load() (*Config, error) {
 		cfg.migrateV112()
 		cfg.MigratedV112 = true
 	}
+	if !cfg.MigratedV115 {
+		cfg.migrateV115()
+		cfg.MigratedV115 = true
+	}
 
 	// Save merged config so changes persist
 	_ = cfg.Save()
@@ -138,29 +143,32 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
-// migrateV112 fixes known-broken default Steps from older versions.
-func (c *Config) migrateV112() {
+// migrateV112 fixed known-broken default Steps from older versions.
+// (Historical: replaced mouse0-throw with G-G. Superseded by migrateV115.)
+func (c *Config) migrateV112() {}
+
+// migrateV115 fixes the grenade throw sequence. In Tarkov you pull the grenade
+// with G and THROW it with the fire button (mouse0). Earlier builds used G-G
+// which only pulls the grenade but never throws it. Now that the sprint-release
+// fix raises the weapon first, mouse0 throws instead of shooting.
+func (c *Config) migrateV115() {
 	for i := range c.Actions {
 		a := &c.Actions[i]
-		if a.Custom {
+		if a.ID != "grenade" || a.Custom || len(a.Steps) == 0 {
 			continue
 		}
-		// Grenade had broken Steps (G, wait, mouse0) which made the bot shoot
-		// instead of throwing. Replace with G, wait, G (switch + quick-throw).
-		if a.ID == "grenade" && len(a.Steps) > 0 {
-			hasMouse := false
-			for _, s := range a.Steps {
-				if strings.Contains(strings.ToLower(s.Key), "mouse") {
-					hasMouse = true
-					break
-				}
+		// If the sequence doesn't end on a mouse throw, rebuild it:
+		// pull (current grenade key) → wait → throw (mouse0).
+		last := a.Steps[len(a.Steps)-1]
+		if !strings.Contains(strings.ToLower(last.Key), "mouse") {
+			pull := a.Key
+			if pull == "" {
+				pull = "g"
 			}
-			if hasMouse {
-				a.Steps = []ActionStep{
-					{Key: a.Key, HoldMs: 200},
-					{DelayMs: 1500},
-					{Key: a.Key, HoldMs: 200},
-				}
+			a.Steps = []ActionStep{
+				{Key: pull, HoldMs: 200},
+				{DelayMs: 1500},
+				{Key: "mouse0", HoldMs: 200},
 			}
 		}
 	}
